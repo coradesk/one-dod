@@ -1,0 +1,15 @@
+[Unit]
+Description=dod-logo.local - AI worker (rembg + Real-ESRGAN)
+
+[Service]
+WorkingDirectory=/home/imam/Projects/one-dod/worker
+# Emulasi server target (2 core AMD EPYC, 4 GB RAM): dikunci ke 2 core, thread otomatis = 2.
+ExecStart=/usr/bin/taskset -c 0,1 /home/imam/Projects/one-dod/worker/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 7001
+Environment=WORKER_MAX_CONCURRENT=1
+Restart=on-failure
+RestartSec=3
+MemoryMax=2G
+MemorySwapMax=0
+
+[Install]
+WantedBy=default.target

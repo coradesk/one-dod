@@ -1,0 +1,7 @@
+/storage/jobs/*
+!/storage/jobs/.gitkeep
+/worker/.venv/
+/worker/models/rembg/
+__pycache__/
+/storage/logs/
+/hasil-tes/

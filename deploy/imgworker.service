@@ -1,0 +1,30 @@
+# Worker AI (Python). Salin ke /etc/systemd/system/imgworker.service, sesuaikan User & path, lalu:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now imgworker
+[Unit]
+Description=Olah Gambar - AI worker (rembg + Real-ESRGAN)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/home/imam/Projects/one-dod/worker
+# WORKER_THREADS otomatis = jumlah core (server 2 core -> 2 thread)
+Environment=WORKER_MAX_CONCURRENT=1
+Environment=BG_MODEL=isnet-general-use
+ExecStart=/home/imam/Projects/one-dod/worker/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 7001 --workers 1
+Restart=on-failure
+RestartSec=3
+
+# Batas keras untuk server 4 GB: bila worker melewati batas, HANYA worker yang dimatikan (lalu
+# restart), bukan nginx/php/OS. Puncak normal ±1,2 GB (hapus background). BiRefNet TIDAK muat di sini.
+MemoryMax=2G
+MemorySwapMax=0
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/imam/Projects/one-dod/worker/models/rembg
+
+[Install]
+WantedBy=multi-user.target
