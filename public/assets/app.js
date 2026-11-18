@@ -8,6 +8,8 @@
     alert: '<path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
     x: '<path d="M18 6 6 18M6 6l12 12"/>',
     down: '<path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16"/>',
+    prev: '<path d="m15 5-7 7 7 7"/>',
+    next: '<path d="m9 5 7 7-7 7"/>',
   };
   const svg = (name) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); s.innerHTML = ICON[name]; return s; };
   const fmtBytes = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
@@ -94,6 +96,54 @@
   });
   clearBtn.addEventListener('click', () => { queue.forEach((q) => URL.revokeObjectURL(q.url)); queue.length = 0; renderQueue(); });
 
+  /* ---------- preview (lightbox): klik gambar hasil untuk melihatnya besar, tanpa membuka Koreksi ---------- */
+  const lightbox = (() => {
+    let root, stage, img, cap, items = [], idx = 0, opener = null;
+    const show = () => {
+      const f = items[idx];
+      stage.className = 'lb-stage ' + (f.transparent ? 'checker' : 'square');
+      img.src = f.url; img.alt = f.alt;
+      cap.textContent = `${f.label} · ${f.w}×${f.h} · ${fmtBytes(f.bytes)}`;
+      root.classList.toggle('single', items.length < 2);
+    };
+    const step = (d) => { idx = (idx + d + items.length) % items.length; show(); };
+    const close = () => {
+      if (!root || root.hidden) return;
+      root.hidden = true; img.removeAttribute('src');
+      document.body.classList.remove('modal-open');
+      opener?.focus?.(); opener = null;
+    };
+    const build = () => {
+      root = el('div', 'lb-overlay'); root.hidden = true;
+      root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-label', 'Preview gambar');
+      stage = el('div', 'lb-stage'); img = el('img');
+      stage.append(img);
+      cap = el('div', 'lb-cap');
+      const mk = (cls, label, icon, fn) => { const b = el('button', 'lb-btn ' + cls); b.type = 'button'; b.setAttribute('aria-label', label); b.append(svg(icon)); b.onclick = (e) => { e.stopPropagation(); fn(); }; return b; };
+      root.append(stage, cap, mk('lb-close', 'Tutup', 'x', close), mk('lb-prev', 'Sebelumnya', 'prev', () => step(-1)), mk('lb-next', 'Berikutnya', 'next', () => step(1)));
+      root.addEventListener('click', (e) => { if (e.target !== img) close(); });
+      document.body.append(root);
+      document.addEventListener('keydown', (e) => {
+        if (root.hidden) return;
+        if (e.key === 'Escape') close();
+        else if (e.key === 'ArrowLeft' && items.length > 1) step(-1);
+        else if (e.key === 'ArrowRight' && items.length > 1) step(1);
+        else if (e.key === 'Tab') { e.preventDefault(); root.querySelector('.lb-close').focus(); }
+        else return;
+        e.preventDefault(); e.stopPropagation();
+      }, true);
+    };
+    return {
+      open(list, i, from) {
+        if (!root) build();
+        items = list; idx = i; opener = from;
+        show(); root.hidden = false;
+        document.body.classList.add('modal-open');
+        root.querySelector('.lb-close').focus();
+      },
+    };
+  })();
+
   /* ---------- hasil ---------- */
   const listEl = $('#list'), emptyEl = $('#empty'), zipEl = $('#zip'), summaryEl = $('#summary');
   const progEl = $('#progress'), progBar = $('#progress i');
@@ -126,12 +176,18 @@
     d.warnings.forEach((w) => { const li = el('li', 'warn'); li.append(svg('alert'), w); steps.append(li); });
 
     const outs = $('.outputs', card);
-    outs.replaceChildren(...Object.entries(d.files).map(([k, f]) => {
+    const gallery = Object.entries(d.files).map(([k, f]) => ({ ...f, transparent: k === 'transparan', alt: `${f.label} – ${d.name}` }));
+    outs.replaceChildren(...Object.entries(d.files).map(([k, f], n) => {
       const box = el('div', 'out');
-      const view = el('div', 'out-view ' + (k === 'transparan' ? 'checker' : 'square'));
+      const view = el('div', 'out-view zoomable ' + (k === 'transparan' ? 'checker' : 'square'));
       const img = el('img'); img.src = f.url; img.loading = 'lazy';
       img.alt = `${f.label} – ${d.name}`;
       view.append(img);
+      view.tabIndex = 0; view.setAttribute('role', 'button'); view.title = 'Klik untuk melihat besar';
+      view.setAttribute('aria-label', `Lihat besar: ${f.label}`);
+      const open = () => lightbox.open(gallery, n, view);
+      view.addEventListener('click', open);
+      view.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
       const foot = el('div', 'out-foot');
       const info = el('div');
       info.append(el('div', 'out-label', f.label), el('div', 'out-meta num', `${f.w}×${f.h} · ${fmtBytes(f.bytes)}`));
