@@ -103,7 +103,7 @@
       const f = items[idx];
       stage.className = 'lb-stage ' + (f.transparent ? 'checker' : 'square');
       img.src = f.url; img.alt = f.alt;
-      cap.textContent = `${f.label} · ${f.w}×${f.h} · ${fmtBytes(f.bytes)}`;
+      cap.textContent = f.transparent ? `${f.label} · ${f.w}×${f.h} · ${fmtBytes(f.bytes)}` : `${f.label} · ${fmtBytes(f.bytes)}`;
       root.classList.toggle('single', items.length < 2);
     };
     const step = (d) => { idx = (idx + d + items.length) % items.length; show(); };
