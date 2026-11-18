@@ -550,6 +550,27 @@
 
   const BRUSHES = ['brush-erase', 'brush-restore', 'bg-erase', 'refine'];
   let mouse = null, space = false, panning = null;
+  // geser 3 jari (layar sentuh): bekerja di semua alat, tanpa harus memilih alat "Geser"
+  const touches = new Map();
+  let pan3 = null, touchMark = null;
+  const centroid = () => {
+    let x = 0, y = 0;
+    touches.forEach((t) => { x += t.x; y += t.y; });
+    return [x / touches.size, y / touches.size];
+  };
+  /** Batalkan apa pun yang sempat dikerjakan jari pertama/kedua sebelum jari ke-3 menyentuh. */
+  function abortTouchAction() {
+    if (stroke) {
+      cur.set(prev); draw(); octx.clearRect(0, 0, W, H);
+      stroke = null; refineMask = null;
+    }
+    if (touchMark) {
+      while (undoStack.length > touchMark.undo) undo();
+      redoStack = []; syncButtons();
+      if (obj.points.length > touchMark.pts) objReset();
+    }
+    panning = null; ui.stage.classList.remove('grabbing');
+  }
   function updateCursor() {
     ui.stage.dataset.tool = space ? 'hand' : tool;
     if (!BRUSHES.includes(tool) || !mouse || space) { ui.cursor.hidden = true; return; }
@@ -563,6 +584,18 @@
   ui.stage.addEventListener('pointerdown', (e) => {
     if (busy || !cur) return;
     ui.stage.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 1) touchMark = { undo: undoStack.length, pts: obj.points.length };
+      if (touches.size >= 3) {
+        abortTouchAction();
+        const [cx, cy] = centroid();
+        pan3 = { cx, cy, tx, ty };
+        ui.stage.classList.add('grabbing');
+        return;
+      }
+      if (touches.size > 1) return;     // jari ke-2 saja: bukan goresan/klik
+    }
     if (tool === 'hand' || space || e.button === 1) { panning = [e.clientX - tx, e.clientY - ty]; ui.stage.classList.add('grabbing'); return; }
     const [x, y] = toImg(e), ix = Math.floor(x), iy = Math.floor(y);
     const inside = ix >= 0 && iy >= 0 && ix < W && iy < H;
@@ -574,11 +607,22 @@
   ui.stage.addEventListener('pointermove', (e) => {
     const r = ui.stage.getBoundingClientRect();
     mouse = [e.clientX - r.left, e.clientY - r.top];
+    if (touches.has(e.pointerId)) {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pan3) {
+        if (touches.size >= 3) { const [cx, cy] = centroid(); tx = pan3.tx + cx - pan3.cx; ty = pan3.ty + cy - pan3.cy; applyView(); }
+        return;
+      }
+    }
     if (panning) { tx = e.clientX - panning[0]; ty = e.clientY - panning[1]; applyView(); return; }
-    if (stroke) { const [x, y] = toImg(e); brushTo(x, y); }
+    if (stroke && e.isPrimary) { const [x, y] = toImg(e); brushTo(x, y); }
     updateCursor();
   });
-  const endPointer = () => { if (panning) { panning = null; ui.stage.classList.remove('grabbing'); } if (stroke) brushEnd(); };
+  const endPointer = (e) => {
+    if (e && touches.delete(e.pointerId) && pan3 && touches.size < 3) { pan3 = null; ui.stage.classList.remove('grabbing'); }
+    if (panning) { panning = null; ui.stage.classList.remove('grabbing'); }
+    if (stroke) brushEnd();
+  };
   ui.stage.addEventListener('pointerup', endPointer);
   ui.stage.addEventListener('pointercancel', endPointer);
   ui.stage.addEventListener('pointerleave', () => { mouse = null; updateCursor(); });
