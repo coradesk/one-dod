@@ -178,8 +178,14 @@ final class Pipeline
         $out = new Imagick();
         $out->readImageBlob($r['blob']);
         $label = $this->cfg['bg_models'][$model] ?? $model;
+        $refine = $r['headers']['x-refine'] ?? '';
+        if (str_ends_with($refine, '-cepat')) {
+            // logo flat berlatar polos/gradien: dikerjakan tanpa model AI (lebih cepat & lebih konsisten)
+            $this->step('bg', 'Background dihapus tanpa AI (logo flat, jalur cepat)');
+            return $out;
+        }
         $this->step('bg', "Background dihapus: $label");
-        if (preg_match('/^(warna|gradien)/', $r['headers']['x-refine'] ?? '')) {
+        if (preg_match('/^(warna|gradien)/', $refine)) {
             $this->step('refine', 'Diperhalus khusus logo (area putih di dalam logo, teks tipis, bayangan)');
         }
         $im->clear();

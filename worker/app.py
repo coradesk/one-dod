@@ -49,6 +49,8 @@ DEFAULT_BG_MODEL = os.getenv("BG_MODEL", "isnet-general-use")
 SHARPNESS_THRESHOLD = float(os.getenv("SHARPNESS_THRESHOLD", "35"))
 MAX_PIXELS = int(os.getenv("MAX_PIXELS", str(30_000_000)))
 BG_MAX_SIDE = int(os.getenv("BG_MAX_SIDE", "1600"))  # input remove-bg diperkecil ke sini dulu
+FAST_LOGO = os.getenv("FAST_LOGO", "1") != "0"   # jalur cepat tanpa AI untuk logo flat (0 = selalu pakai AI)
+FAST_MIN_SIDE = int(os.getenv("FAST_MIN_SIDE", "640"))
 SR_MODEL_PATH = MODELS_DIR / "realesr-general-x4v3.onnx"
 SR_TILE = int(os.getenv("SR_TILE", "384"))
 SR_TILE_PAD = 16
@@ -264,6 +266,16 @@ async def remove_bg(
     if max(img.size) > BG_MAX_SIDE:
         img.thumbnail((BG_MAX_SIDE, BG_MAX_SIDE), Image.LANCZOS)
     t = time.perf_counter()
+    # Jalur cepat tanpa AI (hemat ±3 dtk di CPU 2 core): logo flat berlatar polos/pola/gradien halus.
+    # Hanya untuk model default; bila gambar tidak memenuhi pengaman, lanjut ke AI seperti biasa.
+    # (min. 640px: pada gambar kecil detektor bayangan tidak andal; pipeline normalnya sudah men-enhance ke ±1024px)
+    if (FAST_LOGO and refine == "auto" and img.mode == "RGB" and model == DEFAULT_BG_MODEL
+            and max(img.size) >= FAST_MIN_SIDE):
+        with _gate:
+            fixed, info = logo_refine(np.asarray(img), None)
+        if fixed is not None:
+            return png_response(Image.fromarray(fixed, "RGBA"),
+                                {"X-Model": "tanpa-ai", "X-Refine": info, "X-Time": f"{time.perf_counter() - t:.2f}"})
     with _gate:
         out = remove(img.convert("RGB"), session=bg_session(model), post_process_mask=False)
     out = out.convert("RGBA")

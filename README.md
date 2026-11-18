@@ -98,6 +98,30 @@ sudo chown -R www-data: ../storage
 - worker: user service `systemctl --user {status|restart} dod-logo-worker`, **meniru server target**: dikunci ke
   2 core (`taskset`) dengan `MemoryMax=2G` (salinan di `deploy/dod-logo-worker.user.service`)
 
+## Produksi: dod.coradesk.site (hasil ukur 2026-11-18)
+
+Spek terukur di VPS (`nproc`, `free`, `lscpu`): **2 vCPU, 3,8 GB RAM, AMD EPYC-Rome (AVX2, tanpa AVX-512/VNNI)**,
+berbagi dengan situs lain (nginx banyak vhost, mariadb, docker, node). Unit worker: `deploy/one-dod-worker.prod.service`.
+
+| Perubahan | Hasil di server ini |
+|---|---|
+| **Jalur cepat tanpa AI** untuk logo flat (`refine(None)`, `FAST_LOGO=1`) | logo gradien 5,4 → ±1,6 dtk, logo kotak-kotak 5,4 → ±1,5 dtk. Masker identik dengan AI+refine (IoU 1,0000). Selain itu otomatis ke ISNet |
+| `CPUQuota=150%` diganti `CPUWeight=50` + `Nice=10` | throttle cgroup 462× → 0; `removeBg` via worker tidak lagi 1 dtk lebih lambat dari ISNet langsung |
+| zram 1 GB (zstd), `vm.swappiness=100`, `vm.page-cluster=0` | server ini sebelumnya tanpa swap; paket `linux-modules-extra` (modul `zram` tidak ada di kernel virtual) |
+
+Jalur cepat hanya dipakai bila **semua** syarat terpenuhi, kalau tidak langsung ke ISNet: gambar RGB ≥ 640px; latar di tepi
+1–4 warna atau gradien halus; objek tidak menyentuh tepi; luas objek 0,4–85%; warna objek sedikit (≥88% piksel objek
+dalam 40 warna dominan, jadi foto ditolak); tidak ada bayangan (>0,2% piksel). Alasannya: di gambar berbayangan, tanpa suara
+AI tersisa abu-abu di sekitar huruf. Regresi: `worker/.venv/bin/python worker/tools/check_fast.py`.
+Matikan lewat `Environment=FAST_LOGO=0` di unit worker.
+
+Sengaja **tidak** dipakai (sudah diukur di server ini, ISNet 1024² fp32 ≈ 2,7–3,2 dtk):
+
+- **ISNet int8** (`onnx-community/ISNet-ONNX`): 5,1 dtk (`model_quantized`) dan 20,6 dtk (`model_int8`), jauh lebih lambat karena CPU
+  tanpa VNNI. Evaluasi ulang hanya bila pindah ke EPYC Zen4/Zen5.
+- **Arena memori ORT** menyala: +15% kecepatan tapi +550 MB RAM (puncak 1,35 GB vs 0,8 GB). `allow_spinning=0`: tidak ada beda.
+- Model ISNet berbentuk tetap 1024×1024, jadi menurunkan resolusi masukan tidak mempercepat.
+
 ## Target server: 2 core AMD EPYC, 4 GB RAM, tanpa GPU
 
 Pembagian kerja mengikuti pola Photopea: **server hanya untuk pipeline otomatis**, interaksi editor (termasuk

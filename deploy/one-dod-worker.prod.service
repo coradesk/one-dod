@@ -1,0 +1,35 @@
+# Produksi dod.coradesk.site (VPS 2 vCPU / 3,8 GB, EPYC-Rome tanpa VNNI, berbagi dengan situs lain).
+# Salinan dari /etc/systemd/system/one-dod-worker.service. Hasil benchmark: lihat README bagian "Produksi".
+[Unit]
+Description=dod.coradesk.site - AI worker (rembg + Real-ESRGAN)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/one-dod/worker
+Environment=WORKER_MAX_CONCURRENT=1
+Environment=HOME=/var/www/one-dod/worker
+Environment=NUMBA_CACHE_DIR=/var/www/one-dod/worker/.numba_cache
+Environment=U2NET_HOME=/var/www/one-dod/worker/models/rembg
+Environment=BG_MODEL=isnet-general-use
+ExecStart=/var/www/one-dod/worker/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 7001 --workers 1
+Restart=on-failure
+RestartSec=3
+
+# Batas keras: kalau worker melewati batas, hanya worker yang dimatikan lalu restart,
+# bukan nginx/php/OS. Server ini 3,8 GB (lebih kecil dari target 4 GB), jadi cap
+# ditekan ke 1,5 GB dan konkurensi 1. Tanpa CPUQuota keras (menyebabkan throttle); CPU dibagi lewat CPUWeight+Nice.
+MemoryMax=1536M
+MemorySwapMax=0
+CPUWeight=50
+Nice=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/www/one-dod/worker/models /var/www/one-dod/worker/.numba_cache /var/www/one-dod/storage /var/www/one-dod/worker
+
+[Install]
+WantedBy=multi-user.target
